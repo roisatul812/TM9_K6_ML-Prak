@@ -1,0 +1,274 @@
+from pathlib import Path
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.metrics import silhouette_score, silhouette_samples
+from scipy.spatial.distance import cdist
+
+BASE_DIR = Path(__file__).resolve().parent
+ROOT_DIR = BASE_DIR.parent if BASE_DIR.name == "code" else BASE_DIR
+OUT = ROOT_DIR / "output" / "evaluasi"
+OUT.mkdir(parents=True, exist_ok=True)
+
+sns.set_theme(style="whitegrid", context="notebook")
+PALETTE = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd"]
+
+
+def kproto_dissimilarity(df, num_cols, cat_cols):
+    """Matriks jarak sesuai fungsi cost K-Prototypes:
+    jarak = (selisih numerik terstandar)^2 + gamma * jumlah kategori tidak cocok.
+    gamma = 0.5 * rata-rata std fitur numerik (default kmodes) = 0.5 setelah standardisasi."""
+    Xn = StandardScaler().fit_transform(df[num_cols])
+    gamma = 0.5 * Xn.std(axis=0).mean()
+    d_num = cdist(Xn, Xn, metric="sqeuclidean")
+    d_cat = np.zeros_like(d_num)
+    for c in cat_cols:
+        v = df[c].astype(str).to_numpy(dtype=object)
+        d_cat += (v[:, None] != v[None, :]).astype(float)
+    return d_num + gamma * d_cat, Xn, gamma
+
+
+def silhouette_plot(sil_vals, labels, title, fname):
+    k = len(np.unique(labels))
+    fig, ax = plt.subplots(figsize=(8, 5))
+    y_low = 10
+    for i in range(k):
+        v = np.sort(sil_vals[labels == i])
+        y_up = y_low + len(v)
+        ax.fill_betweenx(np.arange(y_low, y_up), 0, v, color=PALETTE[i], alpha=0.8)
+        ax.text(-0.05, y_low + 0.5 * len(v), f"C{i}", fontsize=10)
+        y_low = y_up + 10
+    ax.axvline(sil_vals.mean(), color="red", linestyle="--", label=f"Rata-rata = {sil_vals.mean():.3f}")
+    ax.set_xlabel("Silhouette coefficient")
+    ax.set_ylabel("Cluster")
+    ax.set_yticks([])
+    ax.set_title(title)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(OUT / fname, dpi=200)
+    plt.close(fig)
+
+
+def count_table(df, label_col, name):
+    c = df[label_col].value_counts().sort_index()
+    t = pd.DataFrame({
+        "Cluster": [f"Cluster_{i}" for i in c.index],
+        "Jumlah_Anggota": c.values,
+        "Persentase(%)": (c.values / len(df) * 100).round(2),
+    })
+    t.loc[len(t)] = ["Total", int(c.sum()), 100.0]
+    t.to_csv(OUT / f"{name}_tabel_jumlah_anggota.csv", index=False)
+    return t
+
+
+# =====================================================================
+# 1. MALL CUSTOMERS
+# =====================================================================
+def run_mall():
+    print("=== EVALUASI & VISUALISASI: MALL CUSTOMERS ===")
+    df = pd.read_csv(ROOT_DIR / "output" / "mall" / "mall_clustered.csv")
+    lab = "Cluster_KPrototypes"
+    num = ["Age", "Annual Income (k$)", "Spending Score (1-100)"]
+    cat = ["Gender"]
+    K = df[lab].nunique()
+
+    # tabel jumlah anggota
+    t_cnt = count_table(df, lab, "mall")
+    print(t_cnt.to_string(index=False))
+
+    # profil numerik (mean, median, std) + modus kategorikal
+    prof = df.groupby(lab)[num].agg(["mean", "median", "std"]).round(2)
+    prof.columns = [f"{a}_{b}" for a, b in prof.columns]
+    prof.to_csv(OUT / "mall_profil_numerik.csv")
+    gender = pd.crosstab(df[lab], df["Gender"])
+    gender_pct = (pd.crosstab(df[lab], df["Gender"], normalize="index") * 100).round(2)
+    gender.join(gender_pct, rsuffix="_%").to_csv(OUT / "mall_profil_gender.csv")
+    print(prof.to_string()); print(gender_pct.to_string())
+
+    # validasi: silhouette dengan jarak K-Prototypes
+    D, Xn, gamma = kproto_dissimilarity(df, num, cat)
+    labels = df[lab].values
+    sil = silhouette_samples(D, labels, metric="precomputed")
+    sil_avg = sil.mean()
+    sil_cluster = pd.Series(sil).groupby(labels).mean().round(4)
+    sil_num_only = silhouette_score(Xn, labels)
+    pd.DataFrame({
+        "Cluster": [f"Cluster_{i}" for i in sil_cluster.index],
+        "Silhouette": sil_cluster.values,
+    }).assign(Rata2_Total=round(sil_avg, 4)).to_csv(OUT / "mall_silhouette.csv", index=False)
+    print(f"gamma={gamma:.2f} | Silhouette (jarak K-Prototypes)={sil_avg:.4f} | numerik saja={sil_num_only:.4f}")
+    print(sil_cluster.to_string())
+    silhouette_plot(sil, labels, "Silhouette Plot K-Prototypes - Mall Customers", "mall_silhouette_plot.png")
+
+    # grafik 1: scatter Income vs Spending + prototipe
+    fig, ax = plt.subplots(figsize=(9, 6))
+    for i in range(K):
+        s = df[df[lab] == i]
+        ax.scatter(s["Annual Income (k$)"], s["Spending Score (1-100)"], s=70, alpha=0.75,
+                   color=PALETTE[i], label=f"Cluster {i} (n={len(s)})", edgecolor="white", linewidth=0.5)
+    cen = df.groupby(lab)[["Annual Income (k$)", "Spending Score (1-100)"]].mean()
+    ax.scatter(cen.iloc[:, 0], cen.iloc[:, 1], marker="X", s=260, color="black", label="Centroid (rata-rata)")
+    ax.set_xlabel("Annual Income (k$)"); ax.set_ylabel("Spending Score (1-100)")
+    ax.set_title("Hasil Clustering K-Prototypes: Annual Income vs Spending Score")
+    ax.legend(); fig.tight_layout(); fig.savefig(OUT / "mall_scatter_income_spending.png", dpi=200); plt.close(fig)
+
+    # grafik 2: scatter Age vs Spending
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+    for ax, (x, y) in zip(axes, [("Age", "Spending Score (1-100)"), ("Age", "Annual Income (k$)")]):
+        sns.scatterplot(data=df, x=x, y=y, hue=lab, palette=PALETTE[:K], s=65, alpha=0.8, ax=ax)
+        ax.set_title(f"{x} vs {y.split(' (')[0]}")
+        ax.legend(title="Cluster")
+    fig.tight_layout(); fig.savefig(OUT / "mall_scatter_age.png", dpi=200); plt.close(fig)
+
+    # grafik 3: boxplot fitur per cluster
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    for ax, f in zip(axes, num):
+        sns.boxplot(data=df, x=lab, y=f, palette=PALETTE[:K], ax=ax)
+        ax.set_xlabel("Cluster"); ax.set_title(f)
+    fig.suptitle("Sebaran Fitur Numerik per Cluster - Mall Customers", y=1.02)
+    fig.tight_layout(); fig.savefig(OUT / "mall_boxplot_fitur.png", dpi=200, bbox_inches="tight"); plt.close(fig)
+
+    # grafik 4: bar jumlah anggota + komposisi gender
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    c = df[lab].value_counts().sort_index()
+    bars = axes[0].bar([f"C{i}" for i in c.index], c.values, color=PALETTE[:K])
+    for b, v in zip(bars, c.values):
+        axes[0].text(b.get_x() + b.get_width() / 2, v + 1, f"{v}\n({v/len(df)*100:.1f}%)", ha="center", fontsize=9)
+    axes[0].set_title("Jumlah Anggota per Cluster"); axes[0].set_ylabel("Jumlah pelanggan")
+    axes[0].set_ylim(0, c.max() * 1.2)
+    gender_pct.plot(kind="bar", stacked=True, ax=axes[1], color=["#e377c2", "#17becf"], rot=0)
+    axes[1].set_title("Komposisi Gender per Cluster (%)"); axes[1].set_xlabel("Cluster"); axes[1].set_ylabel("%")
+    axes[1].legend(title="Gender")
+    fig.tight_layout(); fig.savefig(OUT / "mall_jumlah_dan_gender.png", dpi=200); plt.close(fig)
+
+    # grafik 5: heatmap profil (z-score rata-rata per cluster)
+    z = df.groupby(lab)[num].mean()
+    z = (z - df[num].mean()) / df[num].std()
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    sns.heatmap(z, annot=prof[[f"{n}_mean" for n in num]].values, fmt=".1f", cmap="RdBu_r", center=0,
+                cbar_kws={"label": "z-score terhadap rata-rata keseluruhan"}, ax=ax)
+    ax.set_yticklabels([f"Cluster {i}" for i in z.index], rotation=0)
+    ax.set_title("Profil Cluster (angka = rata-rata asli)")
+    fig.tight_layout(); fig.savefig(OUT / "mall_heatmap_profil.png", dpi=200); plt.close(fig)
+
+
+# =====================================================================
+# 2. HEART DISEASE
+# =====================================================================
+def run_heart():
+    print("\n=== EVALUASI & VISUALISASI: HEART DISEASE ===")
+    df = pd.read_csv(ROOT_DIR / "output" / "heart" / "heart_clustered.csv")
+    lab = "Cluster_KPrototypes"
+    num = ["Age", "RestingBP", "Cholesterol", "MaxHR", "Oldpeak"]
+    cat = ["Sex", "ChestPainType", "FastingBS", "RestingECG", "ExerciseAngina", "ST_Slope"]
+    K = df[lab].nunique()
+    labels = df[lab].values
+
+    t_cnt = count_table(df, lab, "heart")
+    print(t_cnt.to_string(index=False))
+
+    prof = df.groupby(lab)[num].agg(["mean", "median", "std"]).round(2)
+    prof.columns = [f"{a}_{b}" for a, b in prof.columns]
+    prof.to_csv(OUT / "heart_profil_numerik.csv")
+    print(prof.to_string())
+
+    # profil kategorikal (persentase tiap kategori per cluster)
+    rows = []
+    for c in cat:
+        ct = (pd.crosstab(df[lab], df[c].astype(str), normalize="index") * 100).round(2)
+        for cl in ct.index:
+            for val in ct.columns:
+                rows.append({"Cluster": f"Cluster_{cl}", "Fitur": c, "Kategori": val, "Persentase(%)": ct.loc[cl, val]})
+    pd.DataFrame(rows).to_csv(OUT / "heart_profil_kategorikal.csv", index=False)
+
+    # validasi eksternal: proporsi HeartDisease (tidak dipakai saat clustering)
+    hd = df.groupby(lab)["HeartDisease"].agg(["sum", "count", "mean"])
+    hd.columns = ["Jumlah_HeartDisease", "Total", "Proporsi"]
+    hd["Proporsi(%)"] = (hd["Proporsi"] * 100).round(2)
+    hd = hd.drop(columns="Proporsi")
+    hd.index = [f"Cluster_{i}" for i in hd.index]
+    hd.to_csv(OUT / "heart_proporsi_heartdisease.csv")
+    print(hd.to_string())
+
+    # validasi internal: silhouette
+    D, Xn, gamma = kproto_dissimilarity(df, num, cat)
+    sil = silhouette_samples(D, labels, metric="precomputed")
+    sil_cluster = pd.Series(sil).groupby(labels).mean().round(4)
+    pd.DataFrame({
+        "Cluster": [f"Cluster_{i}" for i in sil_cluster.index],
+        "Silhouette": sil_cluster.values,
+    }).assign(Rata2_Total=round(sil.mean(), 4)).to_csv(OUT / "heart_silhouette.csv", index=False)
+    print(f"gamma={gamma:.2f} | Silhouette (jarak K-Prototypes)={sil.mean():.4f}")
+    print(sil_cluster.to_string())
+    silhouette_plot(sil, labels, "Silhouette Plot K-Prototypes - Heart Disease", "heart_silhouette_plot.png")
+
+    # grafik 1: PCA 2D (numerik terstandar + one-hot kategorikal)
+    Xmix = pd.concat([pd.DataFrame(Xn, columns=num), pd.get_dummies(df[cat].astype(str), dtype=float) * np.sqrt(gamma)], axis=1)
+    pca = PCA(n_components=2, random_state=42)
+    P = pca.fit_transform(Xmix)
+    fig, ax = plt.subplots(figsize=(9, 6.5))
+    for i in range(K):
+        m = labels == i
+        ax.scatter(P[m, 0], P[m, 1], s=35, alpha=0.7, color=PALETTE[i], label=f"Cluster {i} (n={m.sum()})",
+                   edgecolor="white", linewidth=0.3)
+    ev = pca.explained_variance_ratio_ * 100
+    ax.set_xlabel(f"PC1 ({ev[0]:.1f}% varians)"); ax.set_ylabel(f"PC2 ({ev[1]:.1f}% varians)")
+    ax.set_title("Visualisasi Cluster K-Prototypes (Proyeksi PCA) - Heart Disease")
+    ax.legend(); fig.tight_layout(); fig.savefig(OUT / "heart_pca_scatter.png", dpi=200); plt.close(fig)
+
+    # grafik 2: scatter Age vs MaxHR
+    fig, ax = plt.subplots(figsize=(9, 6))
+    sns.scatterplot(data=df, x="Age", y="MaxHR", hue=lab, palette=PALETTE[:K], s=55, alpha=0.8, ax=ax)
+    ax.set_title("Age vs MaxHR per Cluster"); ax.legend(title="Cluster")
+    fig.tight_layout(); fig.savefig(OUT / "heart_scatter_age_maxhr.png", dpi=200); plt.close(fig)
+
+    # grafik 3: boxplot numerik
+    fig, axes = plt.subplots(1, 5, figsize=(20, 4.8))
+    for ax, f in zip(axes, num):
+        sns.boxplot(data=df, x=lab, y=f, palette=PALETTE[:K], ax=ax)
+        ax.set_xlabel("Cluster"); ax.set_title(f)
+    fig.suptitle("Sebaran Fitur Numerik per Cluster - Heart Disease", y=1.03)
+    fig.tight_layout(); fig.savefig(OUT / "heart_boxplot_fitur.png", dpi=200, bbox_inches="tight"); plt.close(fig)
+
+    # grafik 4: komposisi fitur kategorikal
+    fig, axes = plt.subplots(2, 3, figsize=(17, 9))
+    for ax, c in zip(axes.ravel(), cat):
+        ct = pd.crosstab(df[lab], df[c].astype(str), normalize="index") * 100
+        ct.plot(kind="bar", stacked=True, ax=ax, rot=0, colormap="tab20c", width=0.75)
+        ax.set_title(c); ax.set_xlabel("Cluster"); ax.set_ylabel("%"); ax.legend(title="", fontsize=8, loc="upper right")
+    fig.suptitle("Komposisi Fitur Kategorikal per Cluster - Heart Disease", y=1.0)
+    fig.tight_layout(); fig.savefig(OUT / "heart_kategorikal_per_cluster.png", dpi=200, bbox_inches="tight"); plt.close(fig)
+
+    # grafik 5: jumlah anggota + proporsi HeartDisease
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+    c = df[lab].value_counts().sort_index()
+    bars = axes[0].bar([f"C{i}" for i in c.index], c.values, color=PALETTE[:K])
+    for b, v in zip(bars, c.values):
+        axes[0].text(b.get_x() + b.get_width() / 2, v + 5, f"{v}\n({v/len(df)*100:.1f}%)", ha="center", fontsize=9)
+    axes[0].set_ylim(0, c.max() * 1.2); axes[0].set_title("Jumlah Anggota per Cluster"); axes[0].set_ylabel("Jumlah pasien")
+    bars = axes[1].bar([f"C{i}" for i in range(K)], hd["Proporsi(%)"].values, color=PALETTE[:K])
+    for b, v in zip(bars, hd["Proporsi(%)"].values):
+        axes[1].text(b.get_x() + b.get_width() / 2, v + 1, f"{v:.1f}%", ha="center", fontsize=10)
+    axes[1].axhline(df["HeartDisease"].mean() * 100, color="gray", linestyle="--", label="Rata-rata keseluruhan")
+    axes[1].set_ylim(0, 110); axes[1].set_title("Proporsi Penderita Heart Disease per Cluster"); axes[1].set_ylabel("%")
+    axes[1].legend()
+    fig.tight_layout(); fig.savefig(OUT / "heart_jumlah_dan_heartdisease.png", dpi=200); plt.close(fig)
+
+    # grafik 6: heatmap profil numerik
+    z = df.groupby(lab)[num].mean()
+    z = (z - df[num].mean()) / df[num].std()
+    fig, ax = plt.subplots(figsize=(8, 4.5))
+    sns.heatmap(z, annot=prof[[f"{n}_mean" for n in num]].values, fmt=".1f", cmap="RdBu_r", center=0,
+                cbar_kws={"label": "z-score terhadap rata-rata keseluruhan"}, ax=ax)
+    ax.set_yticklabels([f"Cluster {i}" for i in z.index], rotation=0)
+    ax.set_title("Profil Numerik Cluster (angka = rata-rata asli)")
+    fig.tight_layout(); fig.savefig(OUT / "heart_heatmap_profil.png", dpi=200); plt.close(fig)
+
+
+if __name__ == "__main__":
+    run_mall()
+    run_heart()
+    print(f"\nSemua grafik dan tabel tersimpan di: {OUT}")
