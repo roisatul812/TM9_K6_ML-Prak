@@ -1,0 +1,8 @@
+RINGKASAN DATASET HEART DISEASE
+========================================
+Ukuran setelah penghapusan duplikat: 918 baris x 12 kolom
+Total missing value: 0
+Fitur numerik: ['Age', 'RestingBP', 'Cholesterol', 'MaxHR', 'Oldpeak']
+Fitur kategorikal: ['Sex', 'ChestPainType', 'FastingBS', 'RestingECG', 'ExerciseAngina', 'ST_Slope']
+Kolom HeartDisease tidak digunakan untuk clustering (hanya interpretasi).
+Dataset disimpan tanpa scaling dan tanpa one-hot encoding agar dapat digunakan K-Prototypes.

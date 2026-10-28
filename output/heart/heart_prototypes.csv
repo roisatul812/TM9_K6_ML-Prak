@@ -1,0 +1,4 @@
+,Age,RestingBP,Cholesterol,MaxHR,Oldpeak,Sex,ChestPainType,FastingBS,RestingECG,ExerciseAngina,ST_Slope
+Cluster_0,57.71,125.3,224.72,117.94,0.84,M,ASY,0,Normal,Y,Flat
+Cluster_1,59.0,149.66,270.94,129.79,1.78,M,ASY,0,Normal,Y,Flat
+Cluster_2,46.41,126.66,239.1,156.69,0.31,M,ATA,0,Normal,N,Up

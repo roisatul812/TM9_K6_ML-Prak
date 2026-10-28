@@ -1,0 +1,8 @@
+# Dependensi Praktikum Pembelajaran Mesin - Pertemuan 9 (Clustering)
+# Kelompok 6: K-Prototypes Clustering
+kmodes>=0.12.2
+scikit-learn>=1.0.2
+pandas>=1.1.5
+numpy>=1.21.6
+matplotlib>=3.5.3
+seaborn>=0.12.2

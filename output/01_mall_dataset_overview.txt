@@ -1,0 +1,8 @@
+RINGKASAN DATASET MALL CUSTOMERS
+========================================
+Ukuran setelah penghapusan duplikat: 200 baris x 5 kolom
+Total missing value setelah preprocessing: 0
+Kolom identifier yang tidak digunakan: ['CustomerID']
+Fitur numerik: ['Age', 'Annual Income (k$)', 'Spending Score (1-100)']
+Fitur kategorikal: ['Gender']
+Dataset disimpan tanpa scaling dan tanpa encoding kategorikal agar dapat digunakan K-Prototypes.

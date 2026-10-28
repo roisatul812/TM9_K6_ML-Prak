@@ -1,0 +1,22 @@
+RINGKASAN MODEL K-PROTOTYPES — MALL CUSTOMERS
+============================================
+Jumlah observasi : 200
+Fitur numerik    : ['Age', 'Annual Income (k$)', 'Spending Score (1-100)']
+Fitur kategorikal: ['Gender']
+K terpilih       : 4 (Elbow point)
+Cost akhir       : 248.45
+Iterasi          : 10
+
+Distribusi Anggota:
+   Cluster  Jumlah_Anggota  Persentase(%)
+ Cluster_0              66           33.0
+ Cluster_1              40           20.0
+ Cluster_2              34           17.0
+ Cluster_3              60           30.0
+
+Prototipe Cluster (Skala Asli):
+             Age  Annual Income (k$)  Spending Score (1-100)  Gender
+Cluster_0  53.42               47.89                   40.44  Female
+Cluster_1  32.88               86.10                   81.53  Female
+Cluster_2  41.26               88.50                   16.76    Male
+Cluster_3  25.43               41.63                   59.00  Female

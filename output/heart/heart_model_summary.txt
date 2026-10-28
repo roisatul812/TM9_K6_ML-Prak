@@ -1,0 +1,20 @@
+RINGKASAN MODEL K-PROTOTYPES — HEART DISEASE
+===========================================
+Jumlah observasi : 918
+Fitur numerik    : ['Age', 'RestingBP', 'Cholesterol', 'MaxHR', 'Oldpeak']
+Fitur kategorikal: ['Sex', 'ChestPainType', 'FastingBS', 'RestingECG', 'ExerciseAngina', 'ST_Slope']
+K terpilih       : 3 (Elbow point)
+Cost akhir       : 3,980.50
+Iterasi          : 24
+
+Distribusi Anggota:
+   Cluster  Jumlah_Anggota  Persentase(%)
+ Cluster_0             296          32.24
+ Cluster_1             252          27.45
+ Cluster_2             370          40.31
+
+Prototipe Cluster (Skala Asli):
+             Age  RestingBP  Cholesterol   MaxHR  Oldpeak Sex ChestPainType FastingBS RestingECG ExerciseAngina ST_Slope
+Cluster_0  57.71     125.30       224.72  117.94     0.84   M           ASY         0     Normal              Y     Flat
+Cluster_1  59.00     149.66       270.94  129.79     1.78   M           ASY         0     Normal              Y     Flat
+Cluster_2  46.41     126.66       239.10  156.69     0.31   M           ATA         0     Normal              N       Up
